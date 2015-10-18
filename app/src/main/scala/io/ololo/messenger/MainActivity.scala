@@ -2,13 +2,16 @@ package io.ololo.messenger
 
 import java.util
 
-import android.app.Activity
-import android.content.Intent
+import android.app.AlertDialog.Builder
+import android.app.{Dialog, Activity}
+import android.content.DialogInterface.{OnCancelListener, OnClickListener}
+import android.content._
 import android.os.Bundle
+import android.support.v4.content.LocalBroadcastManager
 import android.support.v7.app.AppCompatActivity
 import android.view.{View, Menu, MenuItem}
 import android.widget.AdapterView.OnItemClickListener
-import android.widget.{AdapterView, SimpleAdapter, ListView}
+import android.widget.{EditText, AdapterView, SimpleAdapter, ListView}
 import io.ololo.messenger.models.MessagesDB
 
 import scala.collection.mutable.ArrayBuffer
@@ -27,6 +30,10 @@ class MainActivity extends AppCompatActivity {
 
   protected override def onCreate(savedInstanceState: Bundle) {
     super.onCreate(savedInstanceState)
+    if (getSharedPreferences("pref", Context.MODE_PRIVATE).contains("name"))
+      startService(new Intent(this, classOf[MessageService]))
+    else
+      showDialog(1)
     list = new ListView(this)
     list.setOnItemClickListener(new OnItemClickListener {
       override def onItemClick(parent: AdapterView[_], view: View, position: Int, id: Long): Unit =
@@ -35,10 +42,10 @@ class MainActivity extends AppCompatActivity {
     setContentView(list)
 
     db = new MessagesDB(this)
+    LocalBroadcastManager.getInstance(this).registerReceiver(broadcast, new IntentFilter(MessageService.ACTION))
   }
 
-  protected override def onResume(): Unit = {
-    super.onResume()
+  def update: Unit = {
     Future {
       lastMessages = db.getLastMessages
       runOnUiThread(
@@ -53,6 +60,10 @@ class MainActivity extends AppCompatActivity {
       )
     } (ExecutionContext.global)
   }
+  protected override def onResume(): Unit = {
+    super.onResume()
+    update
+  }
 
   override def onCreateOptionsMenu(menu: Menu): Boolean = {
     getMenuInflater.inflate(R.menu.menu_main, menu)
@@ -62,7 +73,7 @@ class MainActivity extends AppCompatActivity {
   override def onOptionsItemSelected(item: MenuItem): Boolean = {
     val id: Int = item.getItemId
     if (id == R.id.action_settings) {
-      startActivityForResult(new Intent(this, classOf[ChooseContactActivity]), 0)
+      showDialog(0)
     }
     super.onOptionsItemSelected(item)
   }
@@ -77,5 +88,47 @@ class MainActivity extends AppCompatActivity {
 
   def openDialog(contact: String) ={
     startActivity(new Intent(this, classOf[DialogActivity]).putExtra("contact", contact))
+  }
+
+  override def onCreateDialog(id: Int): Dialog = {
+    id match {
+      case 0 => {
+        val input = new EditText(this)
+        val d = new Builder(this)
+          .setTitle(R.string.input_user_name)
+          .setView(input)
+          .setPositiveButton(android.R.string.ok, new OnClickListener {
+          override def onClick(dialog: DialogInterface, which: Int): Unit = {
+            val name = input.getText.toString
+            openDialog(name)
+          }
+        })
+        d.create()
+      }
+      case 1 => {
+        val input = new EditText(this)
+        val d = new Builder(this)
+          .setTitle(R.string.input_your_name)
+          .setView(input)
+          .setPositiveButton(android.R.string.ok, new OnClickListener {
+            override def onClick(dialog: DialogInterface, which: Int): Unit = {
+              val name = input.getText.toString
+              getSharedPreferences("pref", Context.MODE_PRIVATE).edit().putString("name", name).commit()
+              startService(new Intent(MainActivity.this, classOf[MessageService]))
+            }
+          })
+          .setOnCancelListener(new OnCancelListener {
+          override def onCancel(dialog: DialogInterface): Unit = {
+            MainActivity.this.finish
+          }})
+        d.create()
+      }
+    }
+  }
+
+  val broadcast = new BroadcastReceiver {
+    override def onReceive(context: Context, intent: Intent): Unit = {
+      update
+    }
   }
 }

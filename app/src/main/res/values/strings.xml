@@ -4,4 +4,6 @@
     <string name="hello_world">Hello world!</string>
     <string name="action_settings">Settings</string>
     <string name="title_activity_choose_contact">Choose Contact</string>
+    <string name="input_user_name">Enter User Name</string>
+    <string name="input_your_name">Enter Your Name</string>
 </resources>

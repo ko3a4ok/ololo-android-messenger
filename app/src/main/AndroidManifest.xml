@@ -23,9 +23,15 @@
             android:name=".ChooseContactActivity"
             android:label="@string/title_activity_choose_contact" >
         </activity>
-        <activity
-            android:name=".DialogActivity" >
+        <activity android:name=".DialogActivity" >
         </activity>
+
+        <service
+            android:name=".MessageService"
+            android:enabled="true"
+            android:exported="false" >
+        </service>
     </application>
+    <uses-permission android:name="android.permission.INTERNET"/>
 
 </manifest>

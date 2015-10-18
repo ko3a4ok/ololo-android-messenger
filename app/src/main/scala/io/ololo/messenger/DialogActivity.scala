@@ -3,7 +3,9 @@ package io.ololo.messenger
 import java.text.SimpleDateFormat
 import java.util.{Date, Locale}
 
-import android.os.Bundle
+import android.content._
+import android.os.{IBinder, Bundle}
+import android.support.v4.content.LocalBroadcastManager
 import android.support.v7.app.AppCompatActivity
 import android.view.{ViewGroup, View, MenuItem}
 import android.widget.{TextView, ListView, BaseAdapter, EditText}
@@ -28,12 +30,14 @@ class DialogActivity extends AppCompatActivity {
   var messages: ArrayBuffer[Bundle] = new ArrayBuffer[Bundle]()
   var adapter: BaseAdapter = _
 
+  var binder: MessageService#MessageBinder = _
   import scala.language.implicitConversions
   implicit def toRunnable[F](f: => F): Runnable =
     new Runnable() { def run() = f }
 
   protected override def onCreate(savedInstanceState: Bundle) {
     super.onCreate(savedInstanceState)
+    LocalBroadcastManager.getInstance(this).registerReceiver(broadcast, new IntentFilter(MessageService.ACTION))
     getSupportActionBar.setDisplayHomeAsUpEnabled(true)
     contact = getIntent.getStringExtra("contact")
     setTitle(contact)
@@ -52,7 +56,7 @@ class DialogActivity extends AppCompatActivity {
       override def getView(position: Int, convertView: View, parent: ViewGroup): View = {
         var view = convertView
         if (view == null) {
-          view = getLayoutInflater.inflate(R.layout.my_message_item, null)
+          view = getLayoutInflater.inflate(if (getItemViewType(position) == 1) R.layout.my_message_item else R.layout.other_message_item, null)
           val vh = new ViewHolder(view.findViewById(R.id.message).asInstanceOf[TextView],
             view.findViewById(R.id.time).asInstanceOf[TextView])
           view.setTag(vh)
@@ -80,10 +84,21 @@ class DialogActivity extends AppCompatActivity {
 
     }
     list.setAdapter(adapter)
+    update
+    bindService(new Intent(this, classOf[MessageService]), new ServiceConnection {override def onServiceDisconnected(name: ComponentName): Unit = ???
+
+      override def onServiceConnected(name: ComponentName, service: IBinder): Unit = {
+        binder = service.asInstanceOf[MessageService#MessageBinder]
+      }
+    }, Context.BIND_AUTO_CREATE)
+  }
+
+  def update: Unit = {
     Future {
-      messages ++= db.getMessages(contact)
+      messages = db.getMessages(contact)
       runOnUiThread(adapter.notifyDataSetChanged())
     }(ExecutionContext.global)
+    adapter.notifyDataSetChanged()
   }
 
   override def onOptionsItemSelected(item: MenuItem): Boolean = {
@@ -109,5 +124,19 @@ class DialogActivity extends AppCompatActivity {
     val msg = message.getText.toString
     message.getText.clear()
     storeMessageInDB(msg, System.currentTimeMillis(), true)
+    binder.sendMessage(msg, contact)
   }
+
+
+  override def onStop(): Unit = {
+    super.onStop()
+    LocalBroadcastManager.getInstance(this).unregisterReceiver(broadcast)
+  }
+
+  val broadcast = new BroadcastReceiver {
+    override def onReceive(context: Context, intent: Intent): Unit = {
+      update
+    }
+  }
+
 }
