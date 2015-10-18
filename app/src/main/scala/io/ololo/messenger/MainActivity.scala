@@ -1,30 +1,57 @@
 package io.ololo.messenger
 
+import java.util
+
 import android.app.Activity
 import android.content.Intent
-import android.os.{AsyncTask, Bundle}
+import android.os.Bundle
 import android.support.v7.app.AppCompatActivity
-import android.view.{Menu, MenuItem}
+import android.view.{View, Menu, MenuItem}
+import android.widget.AdapterView.OnItemClickListener
+import android.widget.{AdapterView, SimpleAdapter, ListView}
 import io.ololo.messenger.models.MessagesDB
 
 import scala.collection.mutable.ArrayBuffer
+import scala.concurrent.{ExecutionContext, Future}
+import scala.collection.JavaConversions.bufferAsJavaList
 
 class MainActivity extends AppCompatActivity {
 
   var db: MessagesDB = _
-  var lastMessages: ArrayBuffer[Bundle] = _
+  var lastMessages: ArrayBuffer[util.Map[String, String]] = _
+  var list: ListView = _
+
+  import scala.language.implicitConversions
+  implicit def toRunnable[F](f: => F): Runnable =
+    new Runnable() { def run() = f }
+
   protected override def onCreate(savedInstanceState: Bundle) {
     super.onCreate(savedInstanceState)
-    setContentView(R.layout.activity_main)
+    list = new ListView(this)
+    list.setOnItemClickListener(new OnItemClickListener {
+      override def onItemClick(parent: AdapterView[_], view: View, position: Int, id: Long): Unit =
+      openDialog(lastMessages(position).get(MessagesDB.COLUMN_FROM))
+    })
+    setContentView(list)
+
     db = new MessagesDB(this)
   }
 
   protected override def onResume(): Unit = {
     super.onResume()
-    new AsyncTask[Void, Void, Void] {
-      override def doInBackground(params: Void*): Unit =
-        lastMessages = db.getLastMessages
-    }
+    Future {
+      lastMessages = db.getLastMessages
+      runOnUiThread(
+      {
+        val adapter = new SimpleAdapter(this,
+          lastMessages,
+          R.layout.main_item,
+          Array(MessagesDB.COLUMN_FROM, MessagesDB.COLUMN_CONTENT, MessagesDB.COLUMN_TIME),
+          Array(android.R.id.text1, android.R.id.text2, R.id.time))
+        list.setAdapter(adapter)
+      }
+      )
+    } (ExecutionContext.global)
   }
 
   override def onCreateOptionsMenu(menu: Menu): Boolean = {
